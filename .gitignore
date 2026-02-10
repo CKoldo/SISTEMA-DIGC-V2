@@ -1,0 +1,19 @@
+# dependencias
+node_modules/
+
+# build
+dist/
+
+# electron builds (por si acaso)
+out/
+release/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env
+.env
+.env.local
+.env.production

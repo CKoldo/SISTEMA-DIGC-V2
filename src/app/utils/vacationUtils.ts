@@ -1,0 +1,259 @@
+import { 
+  differenceInDays, 
+  differenceInMonths,
+  addDays, 
+  isFriday, 
+  isSaturday, 
+  isSunday,
+  isWeekend,
+  addYears,
+  format,
+  parseISO,
+  startOfDay,
+  isAfter,
+  eachDayOfInterval
+} from 'date-fns';
+import { es } from 'date-fns/locale';
+import type { CronogramaVacaciones, RangoVacaciones, VacationValidation } from '@/app/types';
+
+/**
+ * Calcula cuántos años ha trabajado una persona
+ */
+export function calcularAniosTrabajados(fechaIngreso: string): number {
+  const ingreso = parseISO(fechaIngreso);
+  const hoy = new Date();
+  const diff = differenceInDays(hoy, ingreso);
+  return Math.floor(diff / 365);
+}
+
+/**
+ * Calcula el periodo vacacional para un empleado
+ */
+export function calcularPeriodoVacacional(fechaIngreso: string): {
+  anioVacacional: string;
+  fechaInicio: string;
+  fechaFin: string;
+} {
+  const ingreso = parseISO(fechaIngreso);
+  const inicioVacaciones = addYears(ingreso, 1); // después de 1 año
+  const finVacaciones = addYears(inicioVacaciones, 1);
+  
+  return {
+    anioVacacional: `${format(inicioVacaciones, 'yyyy', { locale: es })}-${format(finVacaciones, 'yyyy', { locale: es })}`,
+    fechaInicio: inicioVacaciones.toISOString(),
+    fechaFin: finVacaciones.toISOString(),
+  };
+}
+
+/**
+ * Verifica si una fecha es viernes
+ */
+export function esViernes(fecha: Date): boolean {
+  return isFriday(fecha);
+}
+
+/**
+ * Calcula los días reales incluyendo fines de semana si empieza en viernes
+ */
+export function calcularDiasConFinDeSemana(fechaInicio: Date, fechaFin: Date): {
+  diasSolicitados: number;
+  incluye_finde: boolean;
+} {
+  const dias = differenceInDays(fechaFin, fechaInicio) + 1; // +1 para incluir el día final
+  const incluye_finde = esViernes(fechaInicio);
+  
+  if (incluye_finde) {
+    // Si empieza en viernes, automáticamente se agregan sábado y domingo
+    const sabado = addDays(fechaInicio, 1);
+    const domingo = addDays(fechaInicio, 2);
+    // Solo cuenta como 1 día de vacaciones aunque incluye el fin de semana
+    return {
+      diasSolicitados: dias,
+      incluye_finde: true,
+    };
+  }
+  
+  return {
+    diasSolicitados: dias,
+    incluye_finde: false,
+  };
+}
+
+/**
+ * Cuenta cuántos días hábiles hay en un rango
+ */
+export function contarDiasHabiles(fechaInicio: Date, fechaFin: Date): number {
+  const allDays = eachDayOfInterval({ start: fechaInicio, end: fechaFin });
+  return allDays.filter(day => !isWeekend(day)).length;
+}
+
+/**
+ * Valida un rango de vacaciones según las reglas de negocio
+ */
+export function validarRangoVacaciones(
+  fechaInicio: Date,
+  fechaFin: Date,
+  cronograma: CronogramaVacaciones,
+  esNuevoRango: boolean = true
+): VacationValidation {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  
+  // Verificar que las fechas están dentro del periodo vacacional
+  const inicioAnio = parseISO(cronograma.fechaInicioAnio);
+  const finAnio = parseISO(cronograma.fechaFinAnio);
+  
+  if (fechaInicio < inicioAnio || fechaInicio > finAnio) {
+    errors.push(`La fecha de inicio debe estar entre ${format(inicioAnio, 'dd/MM/yyyy', { locale: es })} y ${format(finAnio, 'dd/MM/yyyy', { locale: es })}`);
+  }
+  
+  if (fechaFin < inicioAnio || fechaFin > finAnio) {
+    errors.push(`La fecha de fin debe estar entre ${format(inicioAnio, 'dd/MM/yyyy', { locale: es })} y ${format(finAnio, 'dd/MM/yyyy', { locale: es })}`);
+  }
+  
+  if (fechaInicio > fechaFin) {
+    errors.push('La fecha de inicio no puede ser posterior a la fecha de fin');
+  }
+  
+  // Calcular días solicitados
+  const { diasSolicitados, incluye_finde } = calcularDiasConFinDeSemana(fechaInicio, fechaFin);
+  
+  // Advertencia si selecciona viernes
+  if (esViernes(fechaInicio)) {
+    warnings.push('⚠️ Al seleccionar un viernes, se incluyen automáticamente el sábado y domingo en el conteo');
+  }
+  
+  // Verificar tipo de rango (flexible vs bloque)
+  const diasFlexiblesRestantes = cronograma.diasFlexiblesDisponibles - cronograma.diasFlexiblesUsados;
+  const diasBloqueRestantes = cronograma.diasBloqueDisponibles - cronograma.diasBloqueUsados;
+  
+  if (diasSolicitados <= 7) {
+    // Es un rango flexible
+    if (diasFlexiblesRestantes === 0) {
+      errors.push('Ya has utilizado todos tus días flexibles (7 días). Los días restantes deben solicitarse en bloques de mínimo 7 días');
+    } else if (diasSolicitados > diasFlexiblesRestantes) {
+      errors.push(`Solo te quedan ${diasFlexiblesRestantes} días flexibles disponibles`);
+    }
+    
+    // Advertencia si está por completar los días flexibles
+    if (diasFlexiblesRestantes - diasSolicitados === 0 && diasFlexiblesRestantes > 0) {
+      warnings.push(`Con este rango completarás tus ${cronograma.diasFlexiblesDisponibles} días flexibles. Los días restantes deberán solicitarse en bloques de mínimo 7 días`);
+    }
+  } else {
+    // Es un bloque (más de 7 días)
+    if (diasSolicitados > diasBloqueRestantes) {
+      errors.push(`Solo te quedan ${diasBloqueRestantes} días en bloque disponibles`);
+    }
+  }
+  
+  // Verificar solapamiento con otros rangos
+  if (esNuevoRango) {
+    for (const rango of cronograma.rangos) {
+      const rangoInicio = parseISO(rango.fechaInicio);
+      const rangoFin = parseISO(rango.fechaFin);
+      
+      if (
+        (fechaInicio >= rangoInicio && fechaInicio <= rangoFin) ||
+        (fechaFin >= rangoInicio && fechaFin <= rangoFin) ||
+        (fechaInicio <= rangoInicio && fechaFin >= rangoFin)
+      ) {
+        errors.push('Este rango se solapa con vacaciones ya programadas');
+        break;
+      }
+    }
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors,
+    warnings,
+  };
+}
+
+/**
+ * Calcula los días totales disponibles
+ */
+export function calcularDiasDisponibles(cronograma: CronogramaVacaciones): {
+  flexibles: number;
+  bloque: number;
+  total: number;
+} {
+  const flexibles = cronograma.diasFlexiblesDisponibles - cronograma.diasFlexiblesUsados;
+  const bloque = cronograma.diasBloqueDisponibles - cronograma.diasBloqueUsados;
+  
+  return {
+    flexibles: Math.max(0, flexibles),
+    bloque: Math.max(0, bloque),
+    total: Math.max(0, flexibles + bloque),
+  };
+}
+
+/**
+ * Formatea un rango de fechas
+ */
+export function formatearRangoFechas(fechaInicio: string, fechaFin: string): string {
+  const inicio = parseISO(fechaInicio);
+  const fin = parseISO(fechaFin);
+  
+  return `${format(inicio, 'dd/MM/yyyy', { locale: es })} - ${format(fin, 'dd/MM/yyyy', { locale: es })}`;
+}
+
+/**
+ * Calcula los días de adelanto disponibles según meses trabajados
+ * 2.5 días por mes trabajado
+ */
+export function calcularDiasAdelantoDisponibles(fechaIngreso: string): number {
+  const ingreso = parseISO(fechaIngreso);
+  const hoy = new Date();
+  const mesesTrabajados = differenceInDays(hoy, ingreso) / 30.44; // Promedio días por mes
+  const diasAdelanto = Math.floor(mesesTrabajados * 2.5);
+  
+  // Máximo 30 días (un año completo = 12 meses = 30 días)
+  return Math.min(diasAdelanto, 30);
+}
+
+/**
+ * Calcula los días de adelanto disponibles dentro del periodo vacacional hasta la fecha actual.
+ * Se considera 2.5 días por mes completado desde el inicio del periodo.
+ */
+export function calcularDiasAdelantoDisponiblesEnPeriodo(fechaInicioAnio: string): number {
+  const inicio = parseISO(fechaInicioAnio);
+  const hoy = new Date();
+  if (hoy <= inicio) return 0;
+
+  const mesesCompletos = differenceInMonths(hoy, inicio);
+  const dias = mesesCompletos * 2.5;
+  // No permitir más de 30 días
+  return Math.min(dias, 30);
+}
+
+/**
+ * Verifica si un rango puede ser reprogramado
+ * Solo se pueden reprogramar rangos cuya fecha de inicio es posterior a hoy
+ */
+export function puedeReprogramar(fechaInicio: string): boolean {
+  const inicio = parseISO(fechaInicio);
+  const hoyInicio = startOfDay(new Date());
+  // Solo permitir reprogramar si la fecha de inicio es posterior al inicio del día actual
+  return isAfter(inicio, hoyInicio);
+}
+
+/**
+ * Genera un ID para vacación.
+ * Formato: 'V' + 4 dígitos para vacación normal, 'VR' + 4 dígitos para reprogramada.
+ * Usa un contador persistido en localStorage para evitar colisiones simples.
+ */
+export function generarIdVacacion(esReprogramada: boolean = false): string {
+  try {
+    const key = 'vacationIdCounter';
+    const current = Number(localStorage.getItem(key) || '0');
+    const next = current + 1;
+    localStorage.setItem(key, String(next));
+    const pad = String(next).padStart(4, '0');
+    return esReprogramada ? `VR${pad}` : `V${pad}`;
+  } catch (e) {
+    // Fallback si localStorage no está disponible
+    const fallback = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
+    return esReprogramada ? `VR${fallback}` : `V${fallback}`;
+  }
+}
