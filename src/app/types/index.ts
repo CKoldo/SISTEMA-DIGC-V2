@@ -25,6 +25,7 @@ export interface RangoVacaciones {
   esAdelanto?: boolean; // si es un adelanto de vacaciones
   reprogramadoDesde?: string[]; // IDs de rangos que fueron reprogramados para crear este
   reprogramadoPor?: string; // ID del nuevo rango que reprogramó este rango (si aplica)
+  esinadId?: string; // ID del documento ESINAD vinculado
 }
 
 export interface CronogramaVacaciones {

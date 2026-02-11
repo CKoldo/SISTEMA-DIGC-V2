@@ -53,20 +53,19 @@ export function esViernes(fecha: Date): boolean {
 }
 
 /**
- * Calcula los días reales incluyendo fines de semana si empieza en viernes
+ * Calcula los días reales incluyendo fines de semana si empieza o termina en viernes
  */
 export function calcularDiasConFinDeSemana(fechaInicio: Date, fechaFin: Date): {
   diasSolicitados: number;
   incluye_finde: boolean;
 } {
   const dias = differenceInDays(fechaFin, fechaInicio) + 1; // +1 para incluir el día final
-  const incluye_finde = esViernes(fechaInicio);
+  const iniciaEnViernes = esViernes(fechaInicio);
+  const terminaEnViernes = esViernes(fechaFin);
+  const incluye_finde = iniciaEnViernes || terminaEnViernes;
   
   if (incluye_finde) {
-    // Si empieza en viernes, automáticamente se agregan sábado y domingo
-    const sabado = addDays(fechaInicio, 1);
-    const domingo = addDays(fechaInicio, 2);
-    // Solo cuenta como 1 día de vacaciones aunque incluye el fin de semana
+    // Si empieza o termina en viernes, automáticamente se incluyen sábado y domingo
     return {
       diasSolicitados: dias,
       incluye_finde: true,
@@ -115,12 +114,21 @@ export function validarRangoVacaciones(
     errors.push('La fecha de inicio no puede ser posterior a la fecha de fin');
   }
   
+  // Validar que la fecha de inicio no sea fin de semana
+  if (isSaturday(fechaInicio) || isSunday(fechaInicio)) {
+    errors.push('No se puede iniciar una vacación en fin de semana (sábado o domingo)');
+  }
+  
   // Calcular días solicitados
   const { diasSolicitados, incluye_finde } = calcularDiasConFinDeSemana(fechaInicio, fechaFin);
   
-  // Advertencia si selecciona viernes
+  // Advertencia si selecciona viernes como fecha de inicio o fin
   if (esViernes(fechaInicio)) {
-    warnings.push('⚠️ Al seleccionar un viernes, se incluyen automáticamente el sábado y domingo en el conteo');
+    warnings.push('⚠️ Al seleccionar un viernes como inicio, se incluyen automáticamente el sábado y domingo');
+  }
+  
+  if (esViernes(fechaFin)) {
+    warnings.push('⚠️ Al seleccionar un viernes como fin, se extiende automáticamente hasta el domingo');
   }
   
   // Verificar tipo de rango (flexible vs bloque)
@@ -256,4 +264,51 @@ export function generarIdVacacion(esReprogramada: boolean = false): string {
     const fallback = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     return esReprogramada ? `VR${fallback}` : `V${fallback}`;
   }
+}
+
+/**
+ * Verifica si dos rangos de fechas se solapan
+ */
+export function verificarSolapamiento(
+  fechaInicio1: Date,
+  fechaFin1: Date,
+  fechaInicio2: Date,
+  fechaFin2: Date
+): boolean {
+  return (
+    (fechaInicio1 >= fechaInicio2 && fechaInicio1 <= fechaFin2) ||
+    (fechaFin1 >= fechaInicio2 && fechaFin1 <= fechaFin2) ||
+    (fechaInicio1 <= fechaInicio2 && fechaFin1 >= fechaFin2)
+  );
+}
+
+/**
+ * Busca solapamientos entre nuevos rangos de fechas y los rangos existentes
+ * Puede excluir IDs específicos (útil para reprogramación)
+ */
+export function buscarSolapamientos(
+  nuevasParechas: Array<{ inicio: string; fin: string }>,
+  cronograma: CronogramaVacaciones,
+  idsAExcluir: string[] = []
+): string | null {
+  for (const nuevaFecha of nuevasParechas) {
+    const nuevoInicio = parseISO(nuevaFecha.inicio);
+    const nuevoFin = parseISO(nuevaFecha.fin);
+
+    for (const rango of cronograma.rangos) {
+      // Excluir rangos que están siendo reprogramados
+      if (idsAExcluir.includes(rango.id)) continue;
+      // Excluir rangos ya reprogramados
+      if ((rango.estado ?? 'activo') !== 'activo') continue;
+
+      const rangoInicio = parseISO(rango.fechaInicio);
+      const rangoFin = parseISO(rango.fechaFin);
+
+      if (verificarSolapamiento(nuevoInicio, nuevoFin, rangoInicio, rangoFin)) {
+        return `Solapamiento detectado con el rango ${formatearRangoFechas(rango.fechaInicio, rango.fechaFin)}`;
+      }
+    }
+  }
+
+  return null;
 }

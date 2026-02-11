@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { RefreshCcw, AlertTriangle, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CronogramaVacaciones, RangoVacaciones } from '@/app/types';
-import { puedeReprogramar, formatearRangoFechas, calcularDiasConFinDeSemana, generarIdVacacion } from '@/app/utils/vacationUtils';
+import { puedeReprogramar, formatearRangoFechas, calcularDiasConFinDeSemana, generarIdVacacion, buscarSolapamientos } from '@/app/utils/vacationUtils';
 import { parseISO, addDays, isFriday, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -58,6 +58,17 @@ export function ReprogramacionVacaciones({ cronograma, onReprogramacion }: Repro
     }
   }, [fechaInicio]);
 
+  // Auto-completar domingo si se selecciona viernes como fin
+  useEffect(() => {
+    if (fechaFin) {
+      const fin = parseISO(fechaFin);
+      if (isFriday(fin)) {
+        const domingo = addDays(fin, 2);
+        setFechaFin(format(domingo, 'yyyy-MM-dd'));
+      }
+    }
+  }, [fechaFin]);
+
   const handleReprogramar = () => {
     if (rangosSeleccionados.length === 0) {
       toast.error('Seleccione al menos un rango para reprogramar');
@@ -95,6 +106,13 @@ export function ReprogramacionVacaciones({ cronograma, onReprogramacion }: Repro
 
       if (diasSolicitados > diasTotalesReprogramados) {
         toast.error(`Los días solicitados (${diasSolicitados}) exceden los días disponibles de los rangos seleccionados (${diasTotalesReprogramados})`);
+        return;
+      }
+
+      // Validar que no haya solapamiento con otros rangos
+      const solapamiento = buscarSolapamientos([{ inicio: fechaInicio, fin: fechaFin }], cronograma, rangosSeleccionados);
+      if (solapamiento) {
+        toast.error(solapamiento);
         return;
       }
 
@@ -174,14 +192,32 @@ export function ReprogramacionVacaciones({ cronograma, onReprogramacion }: Repro
       const nuevos: any[] = [];
       let sumaNuevos = 0;
       const nuevoBase = Date.now();
+      
+      // Validar fechas antes de procesar
+      const fechasAValidar: Array<{ inicio: string; fin: string }> = [];
       for (const id of rangosSeleccionados) {
         const nf = nuevasFechas[id];
+        fechasAValidar.push({ inicio: nf.inicio, fin: nf.fin });
         const ini = parseISO(nf.inicio);
         const finN = parseISO(nf.fin);
         if (ini > finN) {
           toast.error('Una fecha de inicio es posterior a la fecha de fin');
           return;
         }
+      }
+
+      // Validar que no hay solapamientos
+      const solapamiento = buscarSolapamientos(fechasAValidar, cronograma, rangosSeleccionados);
+      if (solapamiento) {
+        toast.error(solapamiento);
+        return;
+      }
+
+      // Procesar nuevos rangos
+      for (const id of rangosSeleccionados) {
+        const nf = nuevasFechas[id];
+        const ini = parseISO(nf.inicio);
+        const finN = parseISO(nf.fin);
         const { diasSolicitados } = calcularDiasConFinDeSemana(ini, finN);
         sumaNuevos += diasSolicitados;
         const nuevoId = generarIdVacacion(true);

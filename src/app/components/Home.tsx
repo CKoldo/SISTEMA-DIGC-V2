@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/app/context/AuthContext';
 import { Button } from '@/app/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { CalendarDays, Users, CalendarPlus, LogOut, Calendar, FileText } from 'lucide-react';
+import { CalendarDays, Users, CalendarPlus, LogOut, Calendar, FileText, Settings } from 'lucide-react';
 
 export function Home() {
   const { user, logout } = useAuth();
@@ -104,6 +104,26 @@ export function Home() {
             <CardContent>
               <Button className="w-full" onClick={() => navigate('/visualizacion-vacaciones')}>
                 Ver Registros de Vacaciones
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Tarjeta Administración */}
+          <Card className="hover:shadow-lg transition-shadow cursor-pointer" onClick={() => navigate('/administracion')}>
+            <CardHeader>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="p-3 bg-orange-100 rounded-lg">
+                  <Settings className="w-6 h-6 text-orange-600" />
+                </div>
+                <CardTitle>Administración</CardTitle>
+              </div>
+              <CardDescription>
+                Gestione los documentos ESINAD asociados a las vacaciones y reprogramaciones
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button className="w-full" onClick={() => navigate('/administracion')}>
+                Ir a Administración
               </Button>
             </CardContent>
           </Card>

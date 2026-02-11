@@ -7,6 +7,7 @@ import { RegistroPersonal } from '@/app/components/RegistroPersonal';
 import { RegistroVacaciones } from '@/app/components/RegistroVacaciones';
 import { VisualizacionVacaciones } from '@/app/components/VisualizacionVacaciones';
 import { PlantillaDeclaracion } from '@/app/components/PlantillaDeclaracion';
+import { Administracion } from '@/app/components/Administracion';
 import { Toaster } from '@/app/components/ui/sonner';
 
 export default function App() {
@@ -53,6 +54,14 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <PlantillaDeclaracion />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/administracion"
+            element={
+              <ProtectedRoute>
+                <Administracion />
               </ProtectedRoute>
             }
           />

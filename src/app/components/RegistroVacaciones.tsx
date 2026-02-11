@@ -98,6 +98,18 @@ export function RegistroVacaciones() {
   }, [fechaInicio]);
 
   useEffect(() => {
+    // Cuando se selecciona un viernes como fecha de fin, automáticamente establecer domingo como fecha fin
+    if (fechaFin && fechaInicio) {
+      const fin = parseISO(fechaFin);
+      if (isFriday(fin)) {
+        const domingo = addDays(fin, 2); // Viernes + 2 días = Domingo
+        setFechaFin(format(domingo, 'yyyy-MM-dd'));
+        toast.info('Se seleccionó un viernes como fecha de fin. Se extendió automáticamente hasta el domingo.');
+      }
+    }
+  }, [fechaFin, fechaInicio]);
+
+  useEffect(() => {
     // Validar cuando cambian las fechas
     if (fechaInicio && fechaFin && selectedCronograma) {
       const inicio = parseISO(fechaInicio);
